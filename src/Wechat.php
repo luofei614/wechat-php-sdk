@@ -81,7 +81,7 @@
       $signatureArray = array($token, $timestamp, $nonce);
       sort($signatureArray,SORT_STRING);
 
-      return sha1(implode($signatureArray)) == $signature;
+      return sha1(implode('',$signatureArray)) == $signature;
     }
 
     /**
@@ -458,14 +458,15 @@ XML;
     }
 
     public function __toString() {
-      return sprintf($this->template,
+      $xml=sprintf($this->template,
         $this->toUserName,
         $this->fromUserName,
         time(),
         count($this->items),
-        implode($this->items),
+        implode('',$this->items),
         $this->funcFlag
       );
+      return $xml;
     }
 
   }
