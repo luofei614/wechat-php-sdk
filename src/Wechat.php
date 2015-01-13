@@ -1,4 +1,5 @@
 <?php
+  include_once "weixinEncrypt/wxBizMsgCrypt.php";
 /**
  * 微信公众平台 PHP SDK
  *
@@ -25,12 +26,19 @@
     private $request;
 
     /**
+     *
+     * 微信加密实例
+     *
+     */ 
+    static public $WXBizMsgCrypt;
+
+    /**
      * 初始化，判断此次请求是否为验证请求，并以数组形式保存
      *
      * @param string $token 验证信息
      * @param boolean $debug 调试模式，默认为关闭
      */
-    public function __construct($token, $debug = FALSE) {
+    public function __construct($token,$acekey,$appid, $debug = FALSE) {
       if (!$this->validateSignature($token)) {
         exit('签名验证失败');
       }
@@ -46,6 +54,25 @@
 
       $this->debug = $debug;
       set_error_handler(array(&$this, 'errorHandler'));
+      //解密字符串
+      if(isset($_GET['encrypt_type']))
+      {
+           if('aes'!=$_GET['encrypt_type']){
+                throw new Exception('encrypt_type_error:'.$_GET['encrypt_type']);
+            }
+            self::$WXBizMsgCrypt = new WXBizMsgCrypt($token, $acekey, $appid);
+            $msg = '';
+            $errCode = self::$WXBizMsgCrypt->decryptMsg($_GET['msg_signature'], $_GET['timestamp'], $_GET['nonce'],$GLOBALS['HTTP_RAW_POST_DATA'], $msg);
+            if ($errCode == 0) 
+            {
+                $GLOBALS['HTTP_RAW_POST_DATA']=$msg;
+            }
+            else
+            {
+                throw new Exception('decryptMsg error, errorCode:'.$errCode);
+            }
+      }
+
       // 设置错误处理函数，将错误通过文本消息回复显示
 
       $xml = (array) simplexml_load_string($GLOBALS['HTTP_RAW_POST_DATA'], 'SimpleXMLElement', LIBXML_NOCDATA);
@@ -310,21 +337,22 @@
       );
 
       $template = <<<ERR
-PHP 报错啦！
-
+微信出错了，请联系help@geekcompany.net
+PHP 报错:
 %s: %s
 File: %s
 Line: %s
 ERR;
 
-      $this->responseText(sprintf($template,
+      $errmsg=sprintf($template,
         $error_type[$level],
         $msg,
         $file,
         $line
-      ));
+      );
+      jdlog('##微信出错了##，错误信息：'.$errmsg,'weixin_error',true,true);
+      $this->responseText($errmsg);
     }
-
   }
 
   /**
@@ -344,6 +372,24 @@ ERR;
     }
 
     abstract public function __toString();
+
+    protected function encryptMsg($msg)
+    {
+        if(Wechat::$WXBizMsgCrypt)
+        {
+            $encryptMsg = '';
+            $errCode = Wechat::$WXBizMsgCrypt->encryptMsg($msg, $_GET['timestamp'], $_GET['nonce'], $encryptMsg);
+            if ($errCode == 0) {
+               return $encryptMsg;
+            } else {
+                throw new Exception('response encryptMsg error error_code'.$errCode);
+            }
+        } 
+        else
+        {
+            return $msg;
+        }
+    }
 
   }
 
@@ -371,13 +417,13 @@ XML;
     }
 
     public function __toString() {
-      return sprintf($this->template,
+       return $this->encryptMsg(sprintf($this->template,
         $this->toUserName,
         $this->fromUserName,
         time(),
         $this->content,
         $this->funcFlag
-      );
+      ));
     }
 
   }
@@ -417,7 +463,7 @@ XML;
     }
 
     public function __toString() {
-      return sprintf($this->template,
+      return $this->encryptMsg(sprintf($this->template,
         $this->toUserName,
         $this->fromUserName,
         time(),
@@ -426,7 +472,7 @@ XML;
         $this->musicUrl,
         $this->hqMusicUrl,
         $this->funcFlag
-      );
+      ));
     }
 
   }
@@ -458,14 +504,14 @@ XML;
     }
 
     public function __toString() {
-      $xml=sprintf($this->template,
+      $xml=$this->encryptMsg(sprintf($this->template,
         $this->toUserName,
         $this->fromUserName,
         time(),
         count($this->items),
         implode('',$this->items),
         $this->funcFlag
-      );
+      ));
       return $xml;
     }
 
@@ -474,7 +520,7 @@ XML;
   /**
    * 单条图文消息类型
    */
-  class NewsResponseItem {
+  class NewsResponseItem  {
 
     protected $title;
     protected $description;
